@@ -1,0 +1,951 @@
+﻿using System;
+using System.Configuration;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Data;
+using System.Data.Sql;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Web;
+
+using DevExpress.Spreadsheet;
+
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json;
+using System.Globalization;
+using System.Collections;
+using System.Web.DynamicData;
+using System.Web.UI;
+using System.Web.Script.Serialization;
+using DevExpress.Web;
+using Payroll.Utilities;
+
+namespace Payroll.Utilities
+{
+    public class legend : ITemplate
+    {
+        public string LeaveColor { get; private set; }
+        public string LeaveValue { get; private set; }
+        public int LeaveTypeId { get; private set; }
+        private const int _max_limit = 15;
+        public legend(string color, string value, int id)
+        {
+            LeaveColor = color;
+            LeaveValue = value;
+            LeaveTypeId = id;
+        }
+
+        public string output(string value)
+        {
+            if (value.Length < _max_limit)
+            {
+                string str = "";
+                for (int i = 0; i < _max_limit - value.Length; i++)
+                {
+                    str += "&nbsp;";
+                }
+                return value + str;
+            }
+            return value.Substring(0, 12) + "...";
+        }
+
+        public void InstantiateIn(Control container)
+        {
+            // <table class="color-container">
+            //    <tr>
+            //        <td>
+            //            <div
+            //                class="color"
+            //                style="background-color: blue;">
+            //            </div>
+            //        </td>
+            //        <td>level 1</td>
+            //    </tr>
+            //</table>
+            System.Web.UI.WebControls.Table dt = new System.Web.UI.WebControls.Table();
+            dt.CssClass = "color-container";
+
+            System.Web.UI.WebControls.TableRow tr = new System.Web.UI.WebControls.TableRow();
+            dt.Controls.Add(tr);
+
+            System.Web.UI.WebControls.TableCell td = new System.Web.UI.WebControls.TableCell();
+            td.Controls.Add(new LiteralControl("<div class='color' style='background-color:#" + LeaveColor + "'></div>"));
+            tr.Controls.Add(td);
+
+            System.Web.UI.WebControls.TableCell td1 = new System.Web.UI.WebControls.TableCell();
+            td1.Controls.Add(new LiteralControl("<div style='width:80px; text-align:left;' title=" + LeaveValue + ">" + output(LeaveValue) + "</div>"));
+            tr.Controls.Add(td1);
+
+            container.Controls.Add(dt);
+        }
+    }
+
+    public partial class LeaveSpread : BasePage
+    {
+        //// set from calender value
+        //void FromCalendar()
+        //{
+        //    ASPxDateEdit fromDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("fromDate") as ASPxDateEdit;
+        //    fromDate.Value = new DateTime(DateTime.Now.Year, 1, 1);
+        //}
+
+        //// set to calender value
+        //void ToCalendar()
+        //{
+        //    ASPxDateEdit toDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("toDate") as ASPxDateEdit;
+        //    ASPxDateEdit fromDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("fromDate") as ASPxDateEdit;
+        //    toDate.Value = fromDate.Date.AddYears(1).AddDays(-1);
+        //}
+
+        protected List<Group> grouping
+        {
+            get
+            {
+                if (HttpContext.Current.Session["Grouping"] != null)
+                    return (List<Group>)HttpContext.Current.Session["Grouping"];
+                else
+                    return null;
+            }
+            set
+            {
+                HttpContext.Current.Session["Grouping"] = value;
+            }
+        }
+
+        private Worksheet worksheet
+        {
+            get
+            {
+                //return spreadsheetControl1.Document.Worksheets[0];
+                return ASPxSpreadsheet1.Document.Worksheets.ActiveWorksheet;
+            }
+        }
+
+        // page load function 
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (!Page.IsPostBack)
+            {
+                //FromCalendar();
+                //ToCalendar();
+                LoadWorkBook();
+            }
+        }
+
+        // load excel control workbook
+        void LoadWorkBook()
+        {
+            IWorkbook workbook = this.ASPxSpreadsheet1.Document;
+            workbook.LoadDocument(CreateWorkbook().SaveDocument(DocumentFormat.Xlsx), DocumentFormat.Xlsx);
+        }
+
+        // create new instance of workbook
+        IWorkbook CreateWorkbook()
+        {
+            Page page = Page;
+            ASPxDateEdit toDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("toDate") as ASPxDateEdit;
+            ASPxDateEdit fromDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("fromDate") as ASPxDateEdit;
+
+            EmployeeLeaveGenerator example = new EmployeeLeaveGenerator(new CultureInfo("en-US"), fromDate.Date, toDate.Date, page);
+            return example.Generate();
+        }
+
+        // btn load click event
+        protected void btnLoadData_Click(object sender, EventArgs e)
+        {
+            ASPxDateEdit toDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("toDate") as ASPxDateEdit;
+            ASPxDateEdit fromDate = ((RibbonTemplateItem)(ASPxSpreadsheet1.RibbonTabs[0].Groups[0].Items[0])).FindControl("fromDate") as ASPxDateEdit;
+            lblMessageHdn.Value = "";
+            if (toDate.Date < fromDate.Date || (toDate.Date - fromDate.Date).Days > 365)
+            {
+                lblMessageHdn.Value = "Please select date range with in a year";
+                //FromCalendar();
+                //ToCalendar();
+            }
+            LoadWorkBook();
+        }
+
+        protected void spreadsheetControl1_Callback(object sender, DevExpress.Web.CallbackEventArgsBase e)
+        {
+            if (e.Parameter.IndexOf("Expanable") != -1)
+            {
+                var Expanable = e.Parameter.Split('=');
+                Group group = JsonConvert.DeserializeObject<Group>(Expanable[1]);
+                grouping.Where(x => x.StartRange == group.StartRange && x.EndRange == group.EndRange)
+                    .ToList()
+                        .ForEach(x =>
+                        {
+                            if (x.Expanable)
+                            {
+                                worksheet.Rows.Group(group.StartRange, group.EndRange, true);
+                                x.Expanable = false;
+
+                                grouping.Where(y => y.StartRange > group.StartRange && y.StartRange != group.StartRange && y.EndRange <= group.EndRange)
+                                    .ToList()
+                                    .ForEach(y =>
+                                    {
+                                        y.Expanable = true;
+                                    });
+                            }
+                            else
+                            {
+                                worksheet.Rows.UnGroup(group.StartRange, group.EndRange, true);
+                                x.Expanable = true;
+                            }
+                        });
+            }
+        }
+
+        protected void ASPxSpreadsheet1_OnInit(object sender, EventArgs e)
+        {
+            DataTable dt = clsDAL.GetDataSet("sp_Get_leavelegends").Tables[0];
+            foreach (DataRow row in dt.Rows)
+            {
+                //levdsc AS LeaveLabel ,
+                //levcol AS leaveColor
+
+                RibbonTemplateItem rTemplate = new RibbonTemplateItem();
+                rTemplate.Size = RibbonItemSize.Small;
+                rTemplate.Template = new legend(row["leaveColor"].ToString(), row["LeaveLabel"].ToString(), Convert.ToInt32(row["levidd"]));
+
+                ASPxSpreadsheet1.RibbonTabs[0].Groups[1].Items.Add(rTemplate);
+            }
+        }
+
+        public string GetLeaveTypeColor(int LeaveTypeId)
+        {
+            foreach (var item in ASPxSpreadsheet1.RibbonTabs[0].Groups[1].Items)
+            {
+                legend leg = item as legend;
+                if (leg.LeaveTypeId == LeaveTypeId)
+                {
+                    return leg.LeaveColor;
+                }
+            }
+
+            return "000000";
+        }
+    }
+
+    public class Leave
+    {
+        public int LeaveId { get; set; }
+        public string DepartmentCode { get; set; }
+        public string PositionCode { get; set; }
+        public string EmployeeCode { get; set; }
+        public string EmployeeName { get; set; }
+        public DateTime FromDate { get; set; }
+        public DateTime ToDate { get; set; }
+        public int LeaveTypeID { get; set; }
+
+        public Color LeaveColor { get; set; }
+    }
+
+    public class Group
+    {
+        public Group(int FirstColumn, int FirstRow, int RowStartRange, int RowEndRange, bool Expend)
+        {
+            Col = FirstColumn;
+            Row = FirstRow;
+            StartRange = RowStartRange;
+            EndRange = RowEndRange;
+            Expanable = Expend;
+        }
+
+        public int Col
+        {
+            get;
+            set;
+        }
+
+        public int Row
+        {
+            get;
+            set;
+        }
+
+        public int StartRange
+        {
+            get;
+            set;
+        }
+
+        public int EndRange
+        {
+            get;
+            set;
+        }
+
+        public bool Expanable
+        {
+            get;
+            set;
+        }
+    }
+
+    public struct DateTimeSpan
+    {
+        private readonly int years;
+        private readonly int months;
+        private readonly int days;
+        private readonly int hours;
+        private readonly int minutes;
+        private readonly int seconds;
+        private readonly int milliseconds;
+
+        public DateTimeSpan(int years, int months, int days, int hours, int minutes, int seconds, int milliseconds)
+        {
+            this.years = years;
+            this.months = months;
+            this.days = days;
+            this.hours = hours;
+            this.minutes = minutes;
+            this.seconds = seconds;
+            this.milliseconds = milliseconds;
+        }
+
+        public int Years { get { return years; } }
+        public int Months { get { return months; } }
+        public int Days { get { return days; } }
+        public int Hours { get { return hours; } }
+        public int Minutes { get { return minutes; } }
+        public int Seconds { get { return seconds; } }
+        public int Milliseconds { get { return milliseconds; } }
+
+        enum Phase { Years, Months, Days, Done }
+
+        public static DateTimeSpan CompareDates(DateTime date1, DateTime date2)
+        {
+            if (date2 < date1)
+            {
+                var sub = date1;
+                date1 = date2;
+                date2 = sub;
+            }
+
+            DateTime current = date1;
+            int years = 0;
+            int months = 0;
+            int days = 0;
+
+            Phase phase = Phase.Years;
+            DateTimeSpan span = new DateTimeSpan();
+
+            while (phase != Phase.Done)
+            {
+                switch (phase)
+                {
+                    case Phase.Years:
+                        if (current.AddYears(years + 1) > date2)
+                        {
+                            phase = Phase.Months;
+                            current = current.AddYears(years);
+                        }
+                        else
+                        {
+                            years++;
+                        }
+                        break;
+                    case Phase.Months:
+                        if (current.AddMonths(months + 1) > date2)
+                        {
+                            phase = Phase.Days;
+                            current = current.AddMonths(months);
+                        }
+                        else
+                        {
+                            months++;
+                        }
+                        break;
+                    case Phase.Days:
+                        if (current.AddDays(days + 1) > date2)
+                        {
+                            current = current.AddDays(days);
+                            var timespan = date2 - current;
+                            span = new DateTimeSpan(years, months, days, timespan.Hours, timespan.Minutes, timespan.Seconds, timespan.Milliseconds);
+                            phase = Phase.Done;
+                        }
+                        else
+                        {
+                            days++;
+                        }
+                        break;
+                }
+            }
+
+            return span;
+        }
+
+        internal static int GetTotalMonths(DateTime start, DateTime end)
+        {
+            int compMonth = (end.Month + end.Year * 12) - (start.Month + start.Year * 12);
+            double daysInEndMonth = (end - end.AddMonths(1)).Days;
+            double months = compMonth + (start.Day - end.Day) / daysInEndMonth;
+
+            return (int)Math.Ceiling(months);
+        }
+
+        internal static int GetTotalMonthsDays(DateTime start, DateTime end)
+        {
+            int totalMonthDays = 0;
+            int totalMonths = DateTimeSpan.GetTotalMonths(start, end);
+            for (int mon = 0; mon < totalMonths; mon++)
+            {
+                DateTime currentMonth = start.AddMonths(mon);
+                totalMonthDays += System.DateTime.DaysInMonth(currentMonth.Year, currentMonth.Month);
+            }
+
+            return totalMonthDays;
+        }
+    }
+
+    public class EmployeeLeaveGenerator
+    {
+        Worksheet sheet;
+        ColumnCollection columns;
+        RowCollection rows;
+        CellCollection cells;
+        IWorkbook book;
+        char separator;
+
+        const int shiftScheduleRowCount = 5;
+        DateTime startDate;
+        DateTime endDate;
+        Page currentPage;
+
+
+        protected List<Group> grouping
+        {
+            get
+            {
+                if (HttpContext.Current.Session["Grouping"] != null)
+                    return (List<Group>)HttpContext.Current.Session["Grouping"];
+                else
+                    return null;
+            }
+            set
+            {
+                HttpContext.Current.Session["Grouping"] = value;
+            }
+        }
+
+        public EmployeeLeaveGenerator(CultureInfo culture, DateTime FromDate, DateTime ToDate, Page page)
+        {
+            this.book = new DevExpress.Spreadsheet.Workbook();
+            this.book.Options.Culture = culture;
+            InitCultureParams(culture);
+            startDate = FromDate;
+            endDate = ToDate;
+            currentPage = page;
+            grouping = new List<Group>();
+        }
+
+        void InitCultureParams(CultureInfo culture)
+        {
+            this.separator = culture.TextInfo.ListSeparator[0];
+        }
+
+        public IWorkbook Generate()
+        {
+            return CreateBook();
+        }
+
+        #region Initialization
+
+        void AddStyles(IWorkbook book)
+        {
+            StyleCollection styles = book.Styles;
+            Style style1 = styles.Add("Style 1");
+            style1.Fill.PatternType = PatternType.Solid;
+            style1.Fill.BackgroundColor = Color.FromArgb(255, 246, 246, 246);
+
+            Style style2 = styles.Add("Style 10");
+            style2.Fill.PatternType = PatternType.Solid;
+            style2.Fill.BackgroundColor = Color.FromArgb(255, 226, 239, 251);
+
+            Style style3 = styles.Add("Style 11");
+            style3.Fill.PatternType = PatternType.Solid;
+            style3.Fill.BackgroundColor = Color.FromArgb(255, 232, 232, 232);
+
+            Style style4 = styles.Add("Style 12");
+            style4.Fill.PatternType = PatternType.Solid;
+            style4.Fill.BackgroundColor = Color.FromArgb(255, 222, 222, 222);
+
+            Style style5 = styles.Add("Style 2");
+            style5.Fill.PatternType = PatternType.Solid;
+            style5.Fill.BackgroundColor = Color.FromArgb(255, 249, 249, 249);
+
+            Style style6 = styles.Add("Style 3");
+            style6.Fill.PatternType = PatternType.Solid;
+            style6.Fill.BackgroundColor = Color.FromArgb(255, 255, 243, 196);
+
+            Style style7 = styles.Add("Style 4");
+            style7.Fill.PatternType = PatternType.Solid;
+            style7.Fill.BackgroundColor = Color.FromArgb(255, 255, 238, 170);
+
+            Style style8 = styles.Add("Style 5");
+            style8.Fill.PatternType = PatternType.Solid;
+            style8.Fill.BackgroundColor = Color.FromArgb(255, 203, 243, 175);
+
+            Style style9 = styles.Add("Style 6");
+            style9.Fill.PatternType = PatternType.Solid;
+            style9.Fill.BackgroundColor = Color.FromArgb(255, 219, 247, 199);
+
+            Style style10 = styles.Add("Style 7");
+            style10.Fill.PatternType = PatternType.Solid;
+            style10.Fill.BackgroundColor = Color.FromArgb(255, 219, 239, 255);
+
+            Style style11 = styles.Add("Style 8");
+            style11.Fill.PatternType = PatternType.Solid;
+            style11.Fill.BackgroundColor = Color.FromArgb(255, 230, 244, 255);
+
+            Style style12 = styles.Add("Style 9");
+            style12.Fill.PatternType = PatternType.Solid;
+            style12.Fill.BackgroundColor = Color.FromArgb(255, 230, 244, 255);
+
+        }
+
+        private IWorkbook CreateBook()
+        {
+            InitWorkbook();
+
+            sheet = book.Worksheets[0];
+            columns = sheet.Columns;
+            rows = sheet.Rows;
+            cells = sheet.Cells;
+
+            sheet.FreezePanes(4, 2);
+            AddStyles(book);
+
+            CreateHeader();
+            CreateLeavePlan();
+            if (grouping != null)
+            {
+                JavaScriptSerializer serializer = new JavaScriptSerializer();
+                string jsongroup = serializer.Serialize(grouping);
+                string activeSheet = sheet.Name;
+                currentPage.ClientScript.RegisterClientScriptBlock(this.GetType(), "array", "var JsonGroupingList= JSON.parse('" + jsongroup + "'); var activeSheet='" + activeSheet + "'", true);
+            }
+            return book;
+        }
+
+        void InitWorkbook()
+        {
+            book.Unit = DevExpress.Office.DocumentUnit.Point;
+            book.Styles.DefaultStyle.Font.Name = "Calibri";
+            book.Styles.DefaultStyle.Font.Size = 11;
+
+            Worksheet sheet = book.Worksheets[0];
+            sheet.Name = "Employee Leave Plan";
+            sheet.DefaultRowHeight = 15;
+            sheet.ActiveView.Orientation = PageOrientation.Portrait;
+            sheet.PrintOptions.FitToPage = true;
+            sheet.ActiveView.ShowGridlines = false;
+        }
+
+        #endregion
+
+        #region Header Work
+
+        void SetRowsHeightInHeader()
+        {
+            sheet["A1:A3"].RowHeight = 18.75;
+        }
+
+        void FormatCellsInHeader()
+        {
+            Range range1 = sheet["B2:G2"];
+            DevExpress.Spreadsheet.Formatting rangeFormatting1 = range1.BeginUpdateFormatting();
+            rangeFormatting1.Font.Color = Color.FromArgb(255, 95, 95, 95);
+            rangeFormatting1.Font.Size = 30;
+            rangeFormatting1.Font.Name = "Segoe UI";
+            rangeFormatting1.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            range1.EndUpdateFormatting(rangeFormatting1);
+
+            Range range2 = sheet["K2:M3"];
+            DevExpress.Spreadsheet.Formatting rangeFormatting2 = range2.BeginUpdateFormatting();
+            rangeFormatting2.Font.Color = Color.FromArgb(255, 95, 95, 95);
+            rangeFormatting2.Font.Size = 10;
+            rangeFormatting2.Font.Name = "Segoe UI";
+            rangeFormatting2.NumberFormat = "MMMM yyyy";
+            rangeFormatting2.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Left;
+            range2.EndUpdateFormatting(rangeFormatting2);
+        }
+
+        void FillHeader()
+        {
+            cells["B2"].Value = "EMPLOYEE LEAVE PLAN";
+            sheet["B2:AD3"].Merge();
+        }
+
+        void CreateHeader()
+        {
+            SetRowsHeightInHeader();
+            FormatCellsInHeader();
+            FillHeader();
+        }
+
+        #endregion
+
+        void CreateLeavePlan()
+        {
+            //(new DateTime(year, month, 1)).ToString("MMMM yyyy")
+            int startRow = shiftScheduleRowCount;
+            FillMonthDays(startRow, startDate, endDate);
+            FillEmployeeAndLeaves(startRow, startDate, endDate);
+        }
+
+        void SetMonthNameAndStyle(string monthName, Cell cell)
+        {
+            cell.Value = monthName;
+            cell.Font.FontStyle = DevExpress.Spreadsheet.SpreadsheetFontStyle.Bold;
+            cell.Font.Color = Color.FromArgb(255, 95, 95, 95);
+            cell.Font.Size = 12;
+            cell.Font.Name = "Segoe UI";
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Left;
+            cell.ColumnWidth = 100;
+            cell.RowHeight = 25;
+            cell.Borders.BottomBorder.LineStyle = BorderLineStyle.Medium;
+            cell.Borders.BottomBorder.Color = Color.FromArgb(255, 143, 143, 143);
+        }
+
+        void SetHeaderAndStyle(string headerName, Cell cell, double width)
+        {
+            cell.Value = headerName;
+            cell.Font.FontStyle = DevExpress.Spreadsheet.SpreadsheetFontStyle.Bold;
+            cell.Font.Color = Color.FromArgb(255, 95, 95, 95);
+            cell.Font.Size = 12;
+            cell.Font.Name = "Segoe UI";
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Center;
+            cell.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            cell.ColumnWidth = width;
+            cell.RowHeight = 25;
+            cell.Borders.BottomBorder.LineStyle = BorderLineStyle.Medium;
+            cell.Borders.BottomBorder.Color = Color.FromArgb(255, 143, 143, 143);
+        }
+
+        void SetDepartmentNameAndStyle(string departmentName, Cell cell, int empIndex)
+        {
+            cell.Value = "  " + departmentName;
+            cell.Font.Name = "Segoe UI Semibold";
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Left;
+            cell.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            cell.Alignment.Indent = 1;
+            cell.Fill.PatternType = PatternType.Solid;
+            if (empIndex % 2 == 0)
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 222, 222, 222);
+            else
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 232, 232, 232);
+        }
+
+        void SetPositionAndStyle(string position, Cell cell, int empIndex)
+        {
+
+            cell.Value = "   " + position;
+            cell.Font.Name = "Segoe UI Semibold";
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Left;
+            cell.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            cell.Alignment.Indent = 1;
+            cell.Fill.PatternType = PatternType.Solid;
+            if (empIndex % 2 == 0)
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 222, 222, 222);
+            else
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 232, 232, 232);
+        }
+
+        void SetEmployeeNameAndStyle(string employeeName, Cell cell, int empIndex)
+        {
+            cell.Value = employeeName;
+            cell.Font.Name = "Segoe UI Semibold";
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Left;
+            cell.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            cell.Alignment.Indent = 1;
+            cell.Fill.PatternType = PatternType.Solid;
+            if (empIndex % 2 == 0)
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 222, 222, 222);
+            else
+                cell.Fill.BackgroundColor = Color.FromArgb(255, 232, 232, 232);
+        }
+
+        void SetDayAndStyle(int day, Cell cell)
+        {
+            cell.Value = day;
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Center;
+            cell.Font.FontStyle = DevExpress.Spreadsheet.SpreadsheetFontStyle.Bold;
+            cell.Font.Color = Color.FromArgb(255, 183, 183, 183);
+            cell.Font.Size = 9;
+            cell.Font.Name = "Segoe UI";
+            cell.ColumnWidth = 12;
+            cell.Borders.BottomBorder.LineStyle = BorderLineStyle.Medium;
+            if (day % 2 == 0)
+                cell.Borders.BottomBorder.Color = Color.FromArgb(255, 143, 143, 143);
+            else
+                cell.Borders.BottomBorder.Color = Color.FromArgb(255, 95, 95, 95);
+        }
+
+        void SetDayAndStyleEmployee(int empIndex, int day, Cell cell)
+        {
+            cell.Alignment.Horizontal = SpreadsheetHorizontalAlignment.Center;
+            cell.Alignment.Vertical = SpreadsheetVerticalAlignment.Center;
+            cell.Font.Size = 12;
+            cell.Font.Name = "Segoe UI";
+            cell.Fill.PatternType = PatternType.Solid;
+
+            if (empIndex % 2 == 0)
+            {
+                if (day % 2 == 0)
+                    cell.Fill.BackgroundColor = Color.FromArgb(255, 246, 246, 246);
+                else
+                    cell.Fill.BackgroundColor = Color.FromArgb(255, 249, 249, 249);
+            }
+            else
+            {
+                if (day % 2 == 0)
+                    cell.Fill.BackgroundColor = Color.FromArgb(255, 249, 249, 249);
+                else
+                    cell.Fill.BackgroundColor = Color.FromArgb(255, 246, 246, 246);
+            }
+        }
+
+        void SetEmployeeLeaveStyle(int LeaveType, DateTime startDate, DateTime endDate, int empIndex, DateTime fromDate, DateTime toDate, Color leaveColor)
+        {
+            if (LeaveType > 0)
+            {
+                int monthDays = DateTimeSpan.GetTotalMonthsDays(fromDate, toDate);
+                int noOfDays = (endDate - startDate).Days;
+                int monthindex = MonthIndex[startDate.Month.ToString() + startDate.Year.ToString()];
+                int startIndex = monthindex + startDate.Day - 1;
+                int endIndex = startIndex + (noOfDays > (monthDays - startDate.Day) ? (monthDays - startDate.Day) : (noOfDays));
+
+                for (int i = startIndex; i <= endIndex; i++)
+                {
+                    sheet.Cells[empIndex, i].Fill.BackgroundColor = leaveColor;
+                }
+            }
+        }
+
+        Dictionary<string, int> MonthIndex = new Dictionary<string, int>();
+        Dictionary<string, int> EmpIndex = new Dictionary<string, int>();
+        void FillMonthDays(int startRow, DateTime from, DateTime to)
+        {
+            int col = 0;
+            SetHeaderAndStyle("Department", cells[startRow - 1, col], 80);
+            col = 1;
+            SetHeaderAndStyle("Position", cells[startRow - 1, col], 90);
+            col = 2;
+            SetHeaderAndStyle("Employee Name", cells[startRow - 1, col], 125);
+            col = 3;
+            double totalMonths = DateTimeSpan.GetTotalMonths(from, to);
+
+            for (int month = 0; month < totalMonths; month++)
+            {
+                DateTime currentMonth = from.AddMonths(month);
+                SetMonthNameAndStyle(currentMonth.ToString("MMMM yyyy"), cells[startRow - 2, col]);
+
+                for (int day = 1; day <= System.DateTime.DaysInMonth(currentMonth.Year, currentMonth.Month); day++)
+                {
+                    if (day == 1)
+                        MonthIndex.Add(currentMonth.Month.ToString() + currentMonth.Year.ToString(), col);
+
+                    SetDayAndStyle(day, cells[startRow - 1, col]);
+                    col++;
+                }
+            }
+        }
+
+        void FillDepartment(int startRow, int[] depIds)
+        {
+            int preDeptid = 0;
+            for (int depindex = 0; depindex < depIds.Length; depindex++)
+            {
+                int deptId = Convert.ToInt32(depIds[depindex]);
+                sheet.Rows[startRow + (depindex)].Height = 20;
+                SetDepartmentNameAndStyle(deptId.ToString(), cells["A" + (startRow + (depindex + 1))], depindex);
+                if (preDeptid == deptId)
+                    sheet.Rows.Group(5, 7, false);
+
+                preDeptid = deptId;
+            }
+        }
+
+        void FillEmployee(int startRow, Dictionary<string, Leave> empIds)
+        {
+            string deptCode = "";
+            int deptCount = 0;
+            string posCode = "";
+            int posCount = 0;
+            for (int empindex = 0; empindex < empIds.Count; empindex++)
+            {
+                Group group = new Group(0, startRow + (empindex + deptCount + posCount), startRow + (empindex + deptCount + posCount + 1), 0, true);
+
+                string empCode = empIds.Keys.ToArray()[empindex];
+                if (deptCode != empIds[empCode].DepartmentCode)
+                {
+                    posCode = "";
+                    deptCode = empIds[empCode].DepartmentCode;
+                    SetDepartmentNameAndStyle(empIds[empCode].DepartmentCode, cells["A" + (startRow + (empindex + deptCount + posCount + 1))], empindex);
+                    deptCount++;
+                }
+
+                Group group1 = new Group(1, startRow + (empindex + deptCount + posCount), startRow + (empindex + deptCount + posCount + 1), 0, true);
+                sheet.Rows[startRow + (empindex)].Height = 20;
+                if (posCode != empIds[empCode].PositionCode && deptCode == empIds[empCode].DepartmentCode)
+                {
+                    posCode = empIds[empCode].PositionCode;
+                    SetPositionAndStyle(empIds[empCode].PositionCode, cells["B" + (startRow + (empindex + deptCount + posCount + 1))], empindex);
+                    posCount++;
+                }
+                SetEmployeeNameAndStyle(empIds[empCode].EmployeeName, cells["C" + (startRow + (empindex + deptCount + posCount + 1))], empindex);
+                EmpIndex.Add(empCode, (startRow + empindex + deptCount + posCount));
+
+                for (int day = 1; day <= DateTimeSpan.GetTotalMonthsDays(startDate, endDate); day++)
+                {
+                    Cell cell = cells[startRow + empindex + deptCount + posCount, day + 2];
+                    SetDayAndStyleEmployee(empindex + deptCount + posCount, day, cell);
+                }
+
+                sheet.Rows.Group(startRow, startRow + empindex + deptCount + posCount, false);
+                group.EndRange = (startRow + empindex + deptCount + posCount);
+                grouping.Add(group);
+
+                group1.EndRange = group.EndRange;
+                grouping.Add(group1);
+
+            }
+        }
+
+        void FillEmployeeAndLeaves(int startRow, DateTime fromDate, DateTime toDate)
+        {
+            Hashtable ht = new Hashtable();
+            ht.Add("@frmdate", fromDate);
+            ht.Add("@todate", toDate);
+
+            DataTable dt = clsDAL.GetDataSet("sp_payroll_GetEmployeeLeaveTrxRecords", ht).Tables[0];
+            if (dt.Rows.Count > 0)
+            {
+                List<Leave> leavelist = new List<Leave>();
+                foreach (DataRow row in dt.Rows)
+                {
+                    Leave temp = new Leave();
+                    temp.LeaveId = Convert.ToInt32(row["LeaveId"].ToString());
+                    temp.DepartmentCode = row["DepartmentCode"].ToString();
+                    temp.PositionCode = row["PositionCode"].ToString();
+                    temp.EmployeeCode = row["EmployeeCode"].ToString();
+                    temp.EmployeeName = row["EmployeeName"].ToString();
+                    temp.FromDate = DateTime.Parse(row["FromDate"].ToString());
+                    temp.ToDate = DateTime.Parse(row["ToDate"].ToString());
+                    temp.LeaveTypeID = Convert.ToInt32(row["LeaveTypeID"].ToString());
+                    temp.LeaveColor = System.Drawing.ColorTranslator.FromHtml("#" + row["LeaveColor"].ToString());
+                    leavelist.Add(temp);
+                }
+
+                //    using (DataLayer.eb_PayrollEntities dataContext = new eb_PayrollEntities())
+                //    {
+                //        var monthlyFromLeaves = (from t in dataContext.eb_prllevtrx
+                //                                 join m in dataContext.eb_prlempmst on t.employeeCode equals m.empcod
+                //                                 where (t.fromDate.HasValue && t.toDate.HasValue)
+                //                                     && (
+                //                                     (t.fromDate.Value >= fromDate && t.fromDate <= toDate))
+                //                                 select new Leave
+                //                                 {
+                //                                     LeaveId = t.recordIDD,
+                //                                     DepartmentCode = m.dptcod,
+                //                                     PositionCode = m.poscod,
+                //                                     EmployeeCode = t.employeeCode,
+                //                                     EmployeeName = m.empprn,
+                //                                     FromDate = t.fromDate,
+                //                                     ToDate = t.toDate,
+                //                                     LeaveTypeID = t.leaveTypeIDD,
+                //                                     IsFrom = true
+                //                                 });
+
+                //        List<int> leaveIds = monthlyFromLeaves.Select(x => x.LeaveId).ToList();
+                //        var monthlyToLeaves = (from t in dataContext.eb_prllevtrx
+                //                               join m in dataContext.eb_prlempmst on t.employeeCode equals m.empcod
+                //                               where (t.fromDate.HasValue && t.toDate.HasValue)
+                //                                   && (t.toDate.Value >= fromDate && t.toDate <= toDate)
+                //                                   && !leaveIds.Contains(t.recordIDD)
+                //                               select new Leave
+                //                               {
+                //                                   LeaveId = t.recordIDD,
+                //                                   DepartmentCode = m.dptcod,
+                //                                   PositionCode = m.poscod,
+                //                                   EmployeeCode = t.employeeCode,
+                //                                   EmployeeName = m.empprn,
+                //                                   FromDate = t.fromDate,
+                //                                   ToDate = t.toDate,
+                //                                   LeaveTypeID = t.leaveTypeIDD,
+                //                                   IsFrom = false
+                //                               });
+
+                //        var monthlyAllLeaves = monthlyFromLeaves.Union(monthlyToLeaves);
+
+                //        //int[] depIds = monthlyAllLeaves.OrderBy(x=>x.DepartmentID).Distinct().Select(x => x.DepartmentID).ToArray();
+                //        //FillDepartment(startRow,depIds);
+                //Dictionary<string, Leave> empIds = monthlyAllLeaves.GroupBy(x => x.EmployeeCode).Select(grp => grp.FirstOrDefault()).OrderBy(x => x.DepartmentCode).ToDictionary(x => x.EmployeeCode, x => x);
+
+                Dictionary<string, Leave> empIds = leavelist.GroupBy(x => x.EmployeeCode).Select(grp => grp.FirstOrDefault()).OrderBy(x => x.DepartmentCode).ToDictionary(x => x.EmployeeCode, x => x);
+                FillEmployee(startRow, empIds);
+
+                DateTime leaveFromDate = new DateTime(fromDate.Year, fromDate.Month, 1);
+                foreach (string empcode in EmpIndex.Keys)
+                {
+                    int empRowIndex = EmpIndex[empcode];
+                    foreach (Leave leave in leavelist.Where(x => x.EmployeeCode == empcode))
+                    {
+                        int leaveDays = (leave.ToDate - leave.FromDate).Days;
+                        SetEmployeeLeaveStyle(leave.LeaveTypeID, leave.FromDate, leave.ToDate, empRowIndex, leaveFromDate, toDate, leave.LeaveColor);
+                    }
+
+                    //var empLeaves = monthlyAllLeaves.Where(x => x.EmployeeCode == empcode && x.IsFrom == true).ToList();
+                    //if (empLeaves != null && empLeaves.Count > 0)
+                    //{
+                    //    foreach (var leave in empLeaves)
+                    //    {
+                    //        int leaveDays = (leave.ToDate.Value - leave.FromDate.Value).Days;
+                    //        SetEmployeeLeaveStyle(leave.LeaveTypeID, leave.FromDate.Value, leave.ToDate.Value, empRowIndex, leaveFromDate, toDate);
+                    //    }
+                    //}
+                    //empLeaves = monthlyAllLeaves.Where(x => x.EmployeeCode == empcode && x.IsFrom == false).ToList();
+                    //if (empLeaves != null && empLeaves.Count > 0)
+                    //{
+                    //    foreach (var leave in empLeaves)
+                    //    {
+                    //        int leaveDays = (leave.ToDate.Value - leaveFromDate).Days;
+                    //        SetEmployeeLeaveStyle(leave.LeaveTypeID, leaveFromDate, leave.ToDate.Value, empRowIndex, leaveFromDate, toDate);
+                    //    }
+                    //}
+                }
+            }
+        }
+    }
+
+    //public class clsDAL
+    //{
+    //    public static DataSet GetDataSet(string Command, Hashtable hsh_Parameters)
+    //    {
+    //        try
+    //        {
+    //            SqlDataAdapter objDA = new SqlDataAdapter(Command, ConfigurationManager.ConnectionStrings["connection"].ConnectionString);
+    //            objDA.SelectCommand.CommandType = System.Data.CommandType.StoredProcedure;
+    //            if (hsh_Parameters != null)
+    //            {
+    //                IDictionaryEnumerator obj_Enm = hsh_Parameters.GetEnumerator();
+    //                while (obj_Enm.MoveNext())
+    //                {
+    //                    objDA.SelectCommand.Parameters.AddWithValue(obj_Enm.Key.ToString(), obj_Enm.Value);
+    //                }
+    //            }
+    //            DataSet objDS = new DataSet();
+    //            objDA.Fill(objDS);
+    //            return (objDS);
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            throw ex;
+    //        }
+    //    }
+
+    //}
+}

@@ -1,0 +1,635 @@
+﻿<%@ Page Language="C#" AutoEventWireup="true" CodeFile="LeaveSpread.aspx.cs" Inherits="Payroll.Utilities.LeaveSpread" %>
+
+<%@ Register Assembly="DevExpress.Web.ASPxSpreadsheet.v15.2, Version=15.2.9.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" Namespace="DevExpress.Web.ASPxSpreadsheet" TagPrefix="dx" %>
+<%@ Register Assembly="DevExpress.Web.v15.2, Version=15.2.9.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" Namespace="DevExpress.Web" TagPrefix="dx" %>
+<%@ Register Assembly="DevExpress.Web.ASPxSpreadsheet.v15.2" Namespace="DevExpress.Web.ASPxSpreadsheet" TagPrefix="dx" %>
+<%@ Reference Page="~/System/Default.aspx" %>
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Budget Form</title>
+    <!-- /.Css files -->
+    <link href="../../App_Themes/Default/Styles/spread.css" rel="stylesheet" />
+    <!-- /.Javascript files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0/jquery.min.js"></script>
+
+    <script>
+        function fromDateDateChanged(s, e) {
+            $("#fromDateHdn").val(s.GetDate());
+        }
+        function toDateDateChanged(s, e) {
+            $("#toDateHdn").val(s.GetDate());
+        }
+        function ClientSideEventsInit(s, e) {
+            fromDate.SetDate(new Date(new Date().getFullYear(), 0, 1));
+            toDate.SetDate(new Date(new Date().getFullYear(), 11, 31));
+
+            var hdntoDate = $("#toDateHdn").val();
+            var hdnfromDate = $("#fromDateHdn").val();
+            if (hdntoDate != '') {
+                toDate.SetDate(new Date(hdntoDate));
+            }
+            if (hdnfromDate != '') {
+                fromDate.SetDate(new Date(hdnfromDate));
+            }
+            if ($("#lblMessageHdn").val() != '') {
+                $("#lblMessage").text($("#lblMessageHdn").val())
+            }
+
+            sp.SetHeight($(window).height());
+            sp.AdjustControl();
+        }
+
+        function onClientSideChange() {
+            $(".expandable").remove();
+            var i = 0;
+            JsonGroupingList.forEach(function (Grouping, i) {
+                var newCell = $(".dxss-sctb").find("[id$='_BL_tb." + Grouping.Col + "." + Grouping.Row + "']");
+                // dxss-cctb
+                //ASPxSpreadsheet1_BL_tb.1.6
+                //ASPxSpreadsheet1_BL_ctb.1.6
+                console.log("[id$='_BL_tb." + Grouping.Col + "." + Grouping.Row + "']");
+                var button = $("<button class='btn btn-primary btn-xs expandable'>")
+                    .css("top", newCell.parent().css("top"))
+                    .css("left", newCell.parent().css("left"))
+                    .css("z-index", "10000")
+                    .attr("id", "expandable" + i)
+                    .data("Grouping", Grouping)
+                    .data("index", i)
+                    .appendTo(newCell.parent().parent());
+
+                if (JsonGroupingList[i].Expanable) {
+                    button.html("-");
+                } else {
+                    button.html("+");
+                }
+
+                if (newCell.length) {
+                    ASPx.Evt.AttachEventToElement(document.getElementById("expandable" + i), ASPx.TouchUIHelper.touchMouseUpEventName, function (e) {
+                        WorkSheetEvents("Expanable=" + JSON.stringify($(e.target).data("Grouping")));
+                        var index = parseInt($(e.target).data("index"));
+                        JsonGroupingList[index].Expanable = !JsonGroupingList[index].Expanable;
+
+
+
+                        JsonGroupingList.forEach(function (e) {
+                            if (e.StartRange > JsonGroupingList[index].StartRange && e.EndRange <= JsonGroupingList[index].EndRange) {
+                                e.Expanable = true;
+                            }
+                        });
+
+                    }, true);
+                }
+
+                i++;
+            });
+        }
+
+        /*----------- Server side call with Devexpress API ------------*/
+        function WorkSheetEvents(param) {
+            sp.PerformCallback(param);
+        }
+    </script>
+</head>
+<body style="overflow: hidden;">
+    <form id="form1" runat="server">
+        <dx:ASPxSpreadsheet ID="ASPxSpreadsheet1" ClientInstanceName="sp" runat="server" Width="100%" Height="550px" ReadOnly="True" RibbonMode="Ribbon" ShowFormulaBar="False" ActiveTabIndex="0" OnCallback="spreadsheetControl1_Callback" OnInit="ASPxSpreadsheet1_OnInit">
+            <RibbonTabs>
+                <dx:RibbonTab Name="Leave Legends" Text="Leave Legends">
+                    <Groups>
+                        <dx:RibbonGroup>
+                            <Items>
+                                <dx:RibbonTemplateItem Size="Large">
+                                    <Template>
+                                        <table cellpadding="5" cellspacing="5" style="border-collapse: collapse">
+                                            <tr>
+                                                <td>
+                                                    <dx:ASPxDateEdit ID="fromDate" runat="server" Date="2016-03-01" Theme="Office2003Blue" ClientSideEvents-DateChanged="fromDateDateChanged" ClientInstanceName="fromDate">
+                                                    </dx:ASPxDateEdit>
+                                                </td>
+                                                <td>
+                                                    <dx:ASPxDateEdit ID="toDate" runat="server" Date="2016-03-01" Theme="Office2003Blue" ClientSideEvents-DateChanged="toDateDateChanged" ClientInstanceName="toDate">
+                                                    </dx:ASPxDateEdit>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="2">
+                                                    <asp:Label
+                                                        ID = "lblMessage"
+                                                        runat = "server"
+                                                        ForeColor = "Red"
+                                                        EnableViewState = "false"
+                                                        ClientIDMode = "Static"></asp:Label>
+                                                    <dx:ASPxButton
+                                                        ID = "btnLoadData"
+                                                        runat = "server"
+                                                        Text = "Load"
+                                                        OnClick = "btnLoadData_Click"/>
+
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                            </Items>
+                        </dx:RibbonGroup>
+                        <dx:RibbonGroup Name="legend" Text="legend">
+                            <%--<Items>
+                                <dx:RibbonTemplateItem>
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: blue;">
+                                                    </div>
+                                                </td>
+                                                <td>level 1</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: blue;">
+                                                    </div>
+                                                </td>
+                                                <td>level 1</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: red;">
+                                                    </div>
+                                                </td>
+                                                <td>level 2</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: orange;">
+                                                    </div>
+                                                </td>
+                                                <td>level 3</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: black;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: purple;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem
+                                    Size="Small">
+                                    <Template>
+                                        <table
+                                            class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div
+                                                        class="color"
+                                                        style="background-color: azure;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                            </Items>--%>
+                        </dx:RibbonGroup>
+                        <dx:RibbonGroup Name="legend" Text="legend with large color" Visible="False">
+                            <Items>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: blue;">
+                                                    </div>
+                                                </td>
+                                                <td>level 1</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: red;">
+                                                    </div>
+                                                </td>
+                                                <td>level 2</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: orange;">
+                                                    </div>
+                                                </td>
+                                                <td>level 3</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: black;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: purple;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                                <dx:RibbonTemplateItem Size="Small">
+                                    <Template>
+                                        <table class="color-container">
+                                            <tr>
+                                                <td>
+                                                    <div class="color color-large" style="background-color: azure;">
+                                                    </div>
+                                                </td>
+                                                <td>level 4</td>
+                                            </tr>
+                                        </table>
+                                    </Template>
+                                </dx:RibbonTemplateItem>
+                            </Items>
+                        </dx:RibbonGroup>
+                    </Groups>
+                </dx:RibbonTab>
+                <dx:SRFileTab>
+                    <Groups>
+                        <dx:SRFileCommonGroup>
+                            <Items>
+                                <dx:SRFileNewCommand>
+                                </dx:SRFileNewCommand>
+                                <dx:SRFileOpenCommand>
+                                </dx:SRFileOpenCommand>
+                                <dx:SRFileSaveCommand>
+                                </dx:SRFileSaveCommand>
+                                <dx:SRFileSaveAsCommand>
+                                </dx:SRFileSaveAsCommand>
+                                <dx:SRFilePrintCommand>
+                                </dx:SRFilePrintCommand>
+                            </Items>
+                        </dx:SRFileCommonGroup>
+                    </Groups>
+                </dx:SRFileTab>
+                <dx:SRHomeTab>
+                    <Groups>
+                        <dx:SRUndoGroup>
+                            <Items>
+                                <dx:SRFileUndoCommand>
+                                </dx:SRFileUndoCommand>
+                                <dx:SRFileRedoCommand>
+                                </dx:SRFileRedoCommand>
+                            </Items>
+                        </dx:SRUndoGroup>
+                        <dx:SRClipboardGroup>
+                            <Items>
+                                <dx:SRPasteSelectionCommand>
+                                </dx:SRPasteSelectionCommand>
+                                <dx:SRCutSelectionCommand>
+                                </dx:SRCutSelectionCommand>
+                                <dx:SRCopySelectionCommand>
+                                </dx:SRCopySelectionCommand>
+                            </Items>
+                        </dx:SRClipboardGroup>
+                        <dx:SRFontGroup>
+                            <Items>
+                                <dx:SRFormatFontNameCommand>
+                                    <PropertiesComboBox NullText="(Font Name)" Width="130px">
+                                    </PropertiesComboBox>
+                                </dx:SRFormatFontNameCommand>
+                                <dx:SRFormatFontSizeCommand>
+                                    <PropertiesComboBox NullText="(Font Size)" Width="60px">
+                                    </PropertiesComboBox>
+                                </dx:SRFormatFontSizeCommand>
+                                <dx:SRFormatIncreaseFontSizeCommand>
+                                </dx:SRFormatIncreaseFontSizeCommand>
+                                <dx:SRFormatDecreaseFontSizeCommand>
+                                </dx:SRFormatDecreaseFontSizeCommand>
+                                <dx:SRFormatFontBoldCommand>
+                                </dx:SRFormatFontBoldCommand>
+                                <dx:SRFormatFontItalicCommand>
+                                </dx:SRFormatFontItalicCommand>
+                                <dx:SRFormatFontUnderlineCommand>
+                                </dx:SRFormatFontUnderlineCommand>
+                                <dx:SRFormatFontStrikeoutCommand>
+                                </dx:SRFormatFontStrikeoutCommand>
+                                <dx:SRFormatBordersCommand>
+                                </dx:SRFormatBordersCommand>
+                                <dx:SRFormatFillColorCommand AutomaticColorItemValue="Automatic">
+                                </dx:SRFormatFillColorCommand>
+                                <dx:SRFormatFontColorCommand AutomaticColorItemValue="Automatic">
+                                </dx:SRFormatFontColorCommand>
+                                <dx:SRFormatBorderLineColorCommand AutomaticColorItemValue="Automatic">
+                                </dx:SRFormatBorderLineColorCommand>
+                            </Items>
+                        </dx:SRFontGroup>
+                        <dx:SRAlignmentGroup>
+                            <Items>
+                                <dx:SRFormatAlignmentTopCommand>
+                                </dx:SRFormatAlignmentTopCommand>
+                                <dx:SRFormatAlignmentMiddleCommand>
+                                </dx:SRFormatAlignmentMiddleCommand>
+                                <dx:SRFormatAlignmentBottomCommand>
+                                </dx:SRFormatAlignmentBottomCommand>
+                                <dx:SRFormatAlignmentLeftCommand>
+                                </dx:SRFormatAlignmentLeftCommand>
+                                <dx:SRFormatAlignmentCenterCommand>
+                                </dx:SRFormatAlignmentCenterCommand>
+                                <dx:SRFormatAlignmentRightCommand>
+                                </dx:SRFormatAlignmentRightCommand>
+                                <dx:SRFormatDecreaseIndentCommand>
+                                </dx:SRFormatDecreaseIndentCommand>
+                                <dx:SRFormatIncreaseIndentCommand>
+                                </dx:SRFormatIncreaseIndentCommand>
+                                <dx:SRFormatWrapTextCommand>
+                                </dx:SRFormatWrapTextCommand>
+                                <dx:SREditingMergeCellsGroupCommand>
+                                </dx:SREditingMergeCellsGroupCommand>
+                            </Items>
+                        </dx:SRAlignmentGroup>
+                        <dx:SRNumberGroup>
+                            <Items>
+                                <dx:SRFormatNumberAccountingCommand>
+                                </dx:SRFormatNumberAccountingCommand>
+                                <dx:SRFormatNumberPercentCommand>
+                                </dx:SRFormatNumberPercentCommand>
+                                <dx:SRFormatNumberCommaStyleCommand>
+                                </dx:SRFormatNumberCommaStyleCommand>
+                                <dx:SRFormatNumberIncreaseDecimalCommand>
+                                </dx:SRFormatNumberIncreaseDecimalCommand>
+                                <dx:SRFormatNumberDecreaseDecimalCommand>
+                                </dx:SRFormatNumberDecreaseDecimalCommand>
+                            </Items>
+                        </dx:SRNumberGroup>
+                        <dx:SRCellsGroup>
+                            <Items>
+                                <dx:SRFormatInsertCommand>
+                                </dx:SRFormatInsertCommand>
+                                <dx:SRFormatRemoveCommand>
+                                </dx:SRFormatRemoveCommand>
+                                <dx:SRFormatFormatCommand>
+                                </dx:SRFormatFormatCommand>
+                            </Items>
+                        </dx:SRCellsGroup>
+                        <dx:SREditingGroup>
+                            <Items>
+                                <dx:SRFormatAutoSumCommand>
+                                </dx:SRFormatAutoSumCommand>
+                                <dx:SRFormatFillCommand>
+                                </dx:SRFormatFillCommand>
+                                <dx:SRFormatClearCommand>
+                                </dx:SRFormatClearCommand>
+                                <dx:SREditingSortAndFilterCommand>
+                                </dx:SREditingSortAndFilterCommand>
+                                <dx:SREditingFindAndSelectCommand>
+                                </dx:SREditingFindAndSelectCommand>
+                            </Items>
+                        </dx:SREditingGroup>
+                        <dx:SRStylesGroup>
+                            <Items>
+                                <dx:SRFormatAsTableCommand>
+                                </dx:SRFormatAsTableCommand>
+                            </Items>
+                        </dx:SRStylesGroup>
+                    </Groups>
+                </dx:SRHomeTab>
+                <dx:SRInsertTab>
+                    <Groups>
+                        <dx:SRTablesGroup>
+                            <Items>
+                                <dx:SRInsertTableCommand>
+                                </dx:SRInsertTableCommand>
+                            </Items>
+                        </dx:SRTablesGroup>
+                        <dx:SRIllustrationsGroup>
+                            <Items>
+                                <dx:SRFormatInsertPictureCommand>
+                                </dx:SRFormatInsertPictureCommand>
+                            </Items>
+                        </dx:SRIllustrationsGroup>
+                        <dx:SRChartsGroup>
+                            <Items>
+                                <dx:SRInsertChartColumnCommand>
+                                </dx:SRInsertChartColumnCommand>
+                                <dx:SRInsertChartLinesCommand>
+                                </dx:SRInsertChartLinesCommand>
+                                <dx:SRInsertChartPiesCommand>
+                                </dx:SRInsertChartPiesCommand>
+                                <dx:SRInsertChartBarsCommand>
+                                </dx:SRInsertChartBarsCommand>
+                                <dx:SRInsertChartAreasCommand>
+                                </dx:SRInsertChartAreasCommand>
+                                <dx:SRInsertChartScattersCommand>
+                                </dx:SRInsertChartScattersCommand>
+                                <dx:SRInsertChartOthersCommand>
+                                </dx:SRInsertChartOthersCommand>
+                            </Items>
+                        </dx:SRChartsGroup>
+                        <dx:SRLinksGroup>
+                            <Items>
+                                <dx:SRFormatInsertHyperlinkCommand>
+                                </dx:SRFormatInsertHyperlinkCommand>
+                            </Items>
+                        </dx:SRLinksGroup>
+                    </Groups>
+                </dx:SRInsertTab>
+                <dx:SRPageLayoutTab>
+                    <Groups>
+                        <dx:SRPageSetupGroup ShowDialogBoxLauncher="True">
+                            <Items>
+                                <dx:SRPageSetupMarginsCommand>
+                                </dx:SRPageSetupMarginsCommand>
+                                <dx:SRPageSetupOrientationCommand>
+                                </dx:SRPageSetupOrientationCommand>
+                                <dx:SRPageSetupPaperKindCommand>
+                                </dx:SRPageSetupPaperKindCommand>
+                            </Items>
+                        </dx:SRPageSetupGroup>
+                        <dx:SRPrintGroup ShowDialogBoxLauncher="True">
+                            <Items>
+                                <dx:SRPrintGridlinesCommand>
+                                </dx:SRPrintGridlinesCommand>
+                                <dx:SRPrintHeadingsCommand>
+                                </dx:SRPrintHeadingsCommand>
+                            </Items>
+                        </dx:SRPrintGroup>
+                    </Groups>
+                </dx:SRPageLayoutTab>
+                <dx:SRFormulasTab>
+                    <Groups>
+                        <dx:SRFunctionLibraryGroup>
+                            <Items>
+                                <dx:SRFunctionsAutoSumCommand>
+                                </dx:SRFunctionsAutoSumCommand>
+                                <dx:SRFunctionsFinancialCommand>
+                                </dx:SRFunctionsFinancialCommand>
+                                <dx:SRFunctionsLogicalCommand>
+                                </dx:SRFunctionsLogicalCommand>
+                                <dx:SRFunctionsTextCommand>
+                                </dx:SRFunctionsTextCommand>
+                                <dx:SRFunctionsDateAndTimeCommand>
+                                </dx:SRFunctionsDateAndTimeCommand>
+                                <dx:SRFunctionsLookupAndReferenceCommand>
+                                </dx:SRFunctionsLookupAndReferenceCommand>
+                                <dx:SRFunctionsMathAndTrigonometryCommand>
+                                </dx:SRFunctionsMathAndTrigonometryCommand>
+                                <dx:SRFunctionsMoreCommand>
+                                </dx:SRFunctionsMoreCommand>
+                            </Items>
+                        </dx:SRFunctionLibraryGroup>
+                        <dx:SRCalculationGroup>
+                            <Items>
+                                <dx:SRFunctionsCalculationOptionCommand>
+                                </dx:SRFunctionsCalculationOptionCommand>
+                                <dx:SRFunctionsCalculateNowCommand>
+                                </dx:SRFunctionsCalculateNowCommand>
+                                <dx:SRFunctionsCalculateSheetCommand>
+                                </dx:SRFunctionsCalculateSheetCommand>
+                            </Items>
+                        </dx:SRCalculationGroup>
+                    </Groups>
+                </dx:SRFormulasTab>
+                <dx:SRDataTab>
+                    <Groups>
+                        <dx:SRDataSortAndFilterGroup>
+                            <Items>
+                                <dx:SRDataSortAscendingCommand>
+                                </dx:SRDataSortAscendingCommand>
+                                <dx:SRDataSortDescendingCommand>
+                                </dx:SRDataSortDescendingCommand>
+                                <dx:SRDataFilterToggleCommand ShowText="True">
+                                </dx:SRDataFilterToggleCommand>
+                                <dx:SRDataFilterClearCommand>
+                                </dx:SRDataFilterClearCommand>
+                                <dx:SRDataFilterReApplyCommand>
+                                </dx:SRDataFilterReApplyCommand>
+                            </Items>
+                        </dx:SRDataSortAndFilterGroup>
+                        <dx:SRDataToolsGroup>
+                            <Items>
+                                <dx:SRDataToolsDataValidationGroupCommand>
+                                </dx:SRDataToolsDataValidationGroupCommand>
+                            </Items>
+                        </dx:SRDataToolsGroup>
+                    </Groups>
+                </dx:SRDataTab>
+                <dx:SRViewTab>
+                    <Groups>
+                        <dx:SRShowGroup>
+                            <Items>
+                                <dx:SRViewShowGridlinesCommand>
+                                </dx:SRViewShowGridlinesCommand>
+                            </Items>
+                        </dx:SRShowGroup>
+                        <dx:SRViewGroup>
+                            <Items>
+                                <dx:SRFullScreenCommand>
+                                </dx:SRFullScreenCommand>
+                            </Items>
+                        </dx:SRViewGroup>
+                        <dx:SRWindowGroup>
+                            <Items>
+                                <dx:SRViewFreezePanesGroupCommand>
+                                </dx:SRViewFreezePanesGroupCommand>
+                            </Items>
+                        </dx:SRWindowGroup>
+                    </Groups>
+                </dx:SRViewTab>
+            </RibbonTabs>
+            <ClientSideEvents Init="ClientSideEventsInit" SelectionChanged="onClientSideChange" />
+        </dx:ASPxSpreadsheet>
+
+        <asp:HiddenField ID="toDateHdn" runat="server" />
+        <asp:HiddenField ID="fromDateHdn" runat="server" />
+        <asp:HiddenField ID="lblMessageHdn" runat="server" />
+    </form>
+</body>
+</html>
+
